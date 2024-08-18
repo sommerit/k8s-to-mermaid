@@ -49,3 +49,12 @@ Deployment_1 {
 }
 Deployment_1 ||--o| ServiceAccount_1 : I
 Service_1 ||--o| Deployment_1 : I
+```
+
+## Gitlab Call
+
+```bash
+curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" \
+  --form "file=@output_er.mmd" \
+  "https://gitlab.com/api/v4/projects/<your_project_id>/uploads"
+```
