@@ -41,7 +41,7 @@ def parse_kubernetes_resources(yaml_file):
                         if containers:
                             image = containers[0].get('image', None)
 
-                        # Sicherstellen, dass volumes existiert und iterierbar ist
+                        # check,if  volumesexist  and be iterierbar 
                         if volumes is not None:
                             for volume in volumes:
                                 if 'configMap' in volume:
@@ -76,14 +76,14 @@ def find_entity_name(resources, kind, name, namespace):
     return entities
 
 def match_selector_labels(selector, labels):
-    # Überprüfen, ob alle Schlüssel-Wert-Paare im selector in labels enthalten sind
+    # check, if  all  key -value -pair in  selector in labels included
     return all(item in labels.items() for item in selector.items())
 
 def generate_mermaid_erdiagram_from_yaml(yaml_file):
     mermaid_output = "%%{init: {'theme':'forest'}}%%\nerDiagram\n"
     resources, service_account_links, configmap_links, service_links = parse_kubernetes_resources(yaml_file)
 
-    # Standardfall, wenn keine Ressourcen gefunden wurden
+    # Fallback
     if not resources:
         mermaid_output += "NoResourcesFound {{\n  string message \"No Kubernetes resources found in the provided YAML.\"\n}}\n"
 
@@ -105,7 +105,7 @@ def generate_mermaid_erdiagram_from_yaml(yaml_file):
                 mermaid_output += f"  string networking \"{networking_info}\"\n"
             mermaid_output += f"}}\n"
 
-    # Links zwischen Deployments/Pods und ServiceAccounts basierend auf serviceAccountName
+    # link between Deployments/Pods and  ServiceAccounts based on serviceAccountName
     for deployment_name, service_account_name, namespace, kind in service_account_links:
         deployment_entities = find_entity_name(resources, kind, deployment_name, namespace)
         service_account_entities = find_entity_name(resources, "ServiceAccount", service_account_name, namespace)
@@ -114,7 +114,7 @@ def generate_mermaid_erdiagram_from_yaml(yaml_file):
                 if service_account_name:  # Überprüfen, ob serviceAccountName tatsächlich existiert
                     mermaid_output += f"{deployment_entity} ||--o| {service_account_entity} : I\n"
 
-    # Links zwischen Deployments und ConfigMaps basierend auf Volumes
+    # link between Deployments and ConfigMaps based  on  Volumes
     for deployment_name, configmap_name, namespace, kind in configmap_links:
         deployment_entities = find_entity_name(resources, kind, deployment_name, namespace)
         configmap_entities = find_entity_name(resources, "ConfigMap", configmap_name, namespace)
@@ -123,7 +123,7 @@ def generate_mermaid_erdiagram_from_yaml(yaml_file):
                 if configmap_name:  # Überprüfen, ob ConfigMap-Name tatsächlich existiert
                     mermaid_output += f"{deployment_entity} ||--o| {configmap_entity} : I\n"
 
-    # Links zwischen Services und Deployments basierend auf Labels
+    # link between services and feployments based on Labels
     for service_name, selector, namespace, kind in service_links:
         service_entities = find_entity_name(resources, "Service", service_name, namespace)
         for key, elements in resources.items():
@@ -138,7 +138,7 @@ def generate_mermaid_erdiagram_from_yaml(yaml_file):
     return mermaid_output
 
 # Beispielaufruf
-yaml_file = './grafana.yaml'  # Hier den Pfad zu Ihrer YAML-Datei angeben
+yaml_file = './template.yaml'  # Hier den Pfad zu Ihrer YAML-Datei angeben
 mermaid_diagram = generate_mermaid_erdiagram_from_yaml(yaml_file)
 if mermaid_diagram:
     print(mermaid_diagram)
