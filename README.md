@@ -23,7 +23,8 @@ The script reads a YAML file and identifies various Kubernetes resources, creati
 
 Below is an example of the generated Mermaid diagram:
 
-```mermaid
+```
+mermaid
 %%{init: {'theme':'forest'}}%%
 erDiagram
 ServiceAccount_1 {
