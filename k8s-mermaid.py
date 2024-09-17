@@ -1,150 +1,176 @@
-import os
 import yaml
 
 def parse_kubernetes_resources(yaml_file):
-    resources = {}
-    service_account_links = []
-    configmap_links = []
-    service_links = []
+    resources, relationships = {}, []
 
     with open(yaml_file, 'r') as stream:
         try:
-            docs = yaml.safe_load_all(stream)
-            for doc in docs:
-                if doc and isinstance(doc, dict) and 'kind' in doc:
-                    kind = doc['kind']
-                    api_version = doc.get('apiVersion', 'Unknown')
-                    name = doc.get('metadata', {}).get('name', 'Unnamed')
-                    namespace = doc.get('metadata', {}).get('namespace', 'default')
-                    labels = doc.get('metadata', {}).get('labels', {})
-                    image = None
-                    ports = []
-                    service_account_name = None
-                    spec = doc.get('spec', {})
+            for doc in yaml.safe_load_all(stream):
+                if not doc or 'kind' not in doc:
+                    continue
+                kind = doc['kind']
+                metadata = doc.get('metadata', {})
+                spec = doc.get('spec', {})
+                name = metadata.get('name', 'Unnamed')
+                namespace = metadata.get('namespace', 'default')
+                labels = metadata.get('labels', {})
+                api_version = doc.get('apiVersion', 'Unknown')
 
-                    if kind == "Service":
-                        ports = spec.get('ports', [])
-                        selector = spec.get('selector', {})
-                        if ports:
-                            ports = [(p.get('port'), p.get('protocol', 'TCP')) for p in ports]
-                        if selector:
-                            service_links.append((name, selector, namespace, kind))
+                resource = {
+                    'kind': kind,
+                    'api_version': api_version,
+                    'name': name,
+                    'namespace': namespace,
+                    'service_account_name': None,
+                    'image': None,
+                    'ports': [],
+                }
 
-                    if kind == "Pod":
-                        service_account_name = spec.get('serviceAccountName')
+                key = f"{kind}_{namespace}_{name}"
+                resources[key] = resource
 
-                    if kind == "Deployment":
-                        pod_spec = spec.get('template', {}).get('spec', {})
-                        service_account_name = pod_spec.get('serviceAccountName')
-                        containers = pod_spec.get('containers', [])
-                        volumes = pod_spec.get('volumes', [])
-                        if containers:
-                            image = containers[0].get('image', None)
+                if kind in ["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "Job", "CronJob"]:
+                    pod_spec = spec.get('template', {}).get('spec', {})
+                    resource['service_account_name'] = pod_spec.get('serviceAccountName')
+                    containers = pod_spec.get('containers', [])
+                    if containers:
+                        container = containers[0]
+                        resource['image'] = container.get('image')
+                        for c in containers:
+                            for env in c.get('env', []):
+                                value_from = env.get('valueFrom', {})
+                                for ref_type in ['secretKeyRef', 'configMapKeyRef']:
+                                    ref = value_from.get(ref_type)
+                                    if ref:
+                                        relationships.append({
+                                            'source_kind': kind,
+                                            'source_name': name,
+                                            'relation': f"uses_{ref_type.replace('KeyRef', '').lower()}",
+                                            'target_kind': ref_type.replace('KeyRef', '').replace('Ref', ''),
+                                            'target_name': ref['name'],
+                                            'namespace': namespace
+                                        })
+                            for env_from in c.get('envFrom', []):
+                                for ref_type in ['secretRef', 'configMapRef']:
+                                    ref = env_from.get(ref_type)
+                                    if ref:
+                                        relationships.append({
+                                            'source_kind': kind,
+                                            'source_name': name,
+                                            'relation': f"uses_{ref_type.replace('Ref', '').lower()}",
+                                            'target_kind': ref_type.replace('Ref', ''),
+                                            'target_name': ref['name'],
+                                            'namespace': namespace
+                                        })
+                    for volume in pod_spec.get('volumes', []):
+                        for vol_type in ['configMap', 'secret', 'persistentVolumeClaim']:
+                            vol = volume.get(vol_type)
+                            if vol:
+                                relationships.append({
+                                    'source_kind': kind,
+                                    'source_name': name,
+                                    'relation': f"mounts_{vol_type.lower()}",
+                                    'target_kind': vol_type.capitalize(),
+                                    'target_name': vol.get('name') or vol.get('claimName') or vol.get('secretName'),
+                                    'namespace': namespace
+                                })
+                    if resource['service_account_name']:
+                        relationships.append({
+                            'source_kind': kind,
+                            'source_name': name,
+                            'relation': 'uses_serviceaccount',
+                            'target_kind': 'ServiceAccount',
+                            'target_name': resource['service_account_name'],
+                            'namespace': namespace
+                        })
 
-                        # check,if  volumesexist  and be iterierbar 
-                        if volumes is not None:
-                            for volume in volumes:
-                                if 'configMap' in volume:
-                                    configmap_name = volume['configMap'].get('name')
-                                    if configmap_name:
-                                        configmap_links.append((name, configmap_name, namespace, kind))
+                elif kind == "Service":
+                    resource['ports'] = [(p.get('port'), p.get('protocol', 'TCP')) for p in spec.get('ports', [])]
+                    selector = spec.get('selector', {})
+                    if selector:
+                        relationships.append({
+                            'source_kind': 'Service',
+                            'source_name': name,
+                            'relation': 'targets',
+                            'target_selector': selector,
+                            'namespace': namespace
+                        })
 
-                    add_resource(resources, kind, api_version, name, namespace, labels, image, ports, service_account_name)
+                elif kind == "Ingress":
+                    for rule in spec.get('rules', []):
+                        for path in rule.get('http', {}).get('paths', []):
+                            service = path.get('backend', {}).get('service', {})
+                            if service:
+                                relationships.append({
+                                    'source_kind': 'Ingress',
+                                    'source_name': name,
+                                    'relation': 'routes_to',
+                                    'target_kind': 'Service',
+                                    'target_name': service.get('name'),
+                                    'namespace': namespace
+                                })
 
-                    if service_account_name:
-                        service_account_links.append((name, service_account_name, namespace, kind))
+                elif kind == "NetworkPolicy":
+                    relationships.append({
+                        'source_kind': 'NetworkPolicy',
+                        'source_name': name,
+                        'relation': 'applies_to',
+                        'target_selector': spec.get('podSelector', {}).get('matchLabels', {}),
+                        'namespace': namespace
+                    })
+
+                elif kind == "HorizontalPodAutoscaler":
+                    scale_target = spec.get('scaleTargetRef', {})
+                    relationships.append({
+                        'source_kind': 'HorizontalPodAutoscaler',
+                        'source_name': name,
+                        'relation': 'controls',
+                        'target_kind': scale_target.get('kind'),
+                        'target_name': scale_target.get('name'),
+                        'namespace': namespace
+                    })
 
         except yaml.YAMLError as exc:
             print(f"Error parsing {yaml_file}: {exc}")
 
-    return resources, service_account_links, configmap_links, service_links
+    return resources, relationships
 
-def add_resource(resources, kind, api_version, name, namespace, labels, image, ports, service_account_name):
-    key = f"{kind}_{api_version}"
-    if key not in resources:
-        resources[key] = []
-    resources[key].append((name, api_version, namespace, labels, image, ports, service_account_name))
+def generate_mermaid_classdiagram_from_yaml(yaml_file):
+    resources, relationships = parse_kubernetes_resources(yaml_file)
+    mermaid_output = "classDiagram\n"
 
-def find_entity_name(resources, kind, name, namespace):
-    entities = []
-    for key, elements in resources.items():
-        k, _ = key.split("_")
-        if k == kind:
-            for i, (n, _, ns, _, _, _, _) in enumerate(elements, start=1):
-                if n == name and ns == namespace:
-                    entities.append(f"{k}_{i}")
-    return entities
+    entity_mapping = {k: k.replace('-', '_').replace('.', '_') for k in resources}
 
-def match_selector_labels(selector, labels):
-    # check, if  all  key -value -pair in  selector in labels included
-    return all(item in labels.items() for item in selector.items())
+    for key, res in resources.items():
+        entity_name = entity_mapping[key]
+        attributes = [f"+{k}: {v}" for k, v in res.items() if v and k not in ['labels', 'annotations']]
+        mermaid_output += f"class {entity_name} {{\n  " + "\n  ".join(attributes) + "\n}}\n"
 
-def generate_mermaid_erdiagram_from_yaml(yaml_file):
-    mermaid_output = "%%{init: {'theme':'forest'}}%%\nerDiagram\n"
-    resources, service_account_links, configmap_links, service_links = parse_kubernetes_resources(yaml_file)
-
-    # Fallback
-    if not resources:
-        mermaid_output += "NoResourcesFound {{\n  string message \"No Kubernetes resources found in the provided YAML.\"\n}}\n"
-
-    for key, elements in resources.items():
-        kind, api_version = key.split("_")
-        for i, (name, api_version, namespace, labels, image, ports, service_account_name) in enumerate(elements, start=1):
-            entity_name = f"{kind}_{i}"
-            mermaid_output += f"{entity_name} {{\n"
-            mermaid_output += f"  string kind \"{kind}\"\n"
-            mermaid_output += f"  string name \"{name}\"\n"
-            mermaid_output += f"  string api_version \"{api_version}\"\n"
-            mermaid_output += f"  string namespace \"{namespace}\"\n"
-            if service_account_name:
-                mermaid_output += f"  string serviceAccountName \"{service_account_name}\"\n"
-            if image:
-                mermaid_output += f"  string image \"{image}\"\n"
-            if ports:
-                networking_info = ", ".join([f"Port: {port}, Protocol: {protocol}" for port, protocol in ports])
-                mermaid_output += f"  string networking \"{networking_info}\"\n"
-            mermaid_output += f"}}\n"
-
-    # link between Deployments/Pods and  ServiceAccounts based on serviceAccountName
-    for deployment_name, service_account_name, namespace, kind in service_account_links:
-        deployment_entities = find_entity_name(resources, kind, deployment_name, namespace)
-        service_account_entities = find_entity_name(resources, "ServiceAccount", service_account_name, namespace)
-        for deployment_entity in deployment_entities:
-            for service_account_entity in service_account_entities:
-                if service_account_name:  # Überprüfen, ob serviceAccountName tatsächlich existiert
-                    mermaid_output += f"{deployment_entity} ||--o| {service_account_entity} : I\n"
-
-    # link between Deployments and ConfigMaps based  on  Volumes
-    for deployment_name, configmap_name, namespace, kind in configmap_links:
-        deployment_entities = find_entity_name(resources, kind, deployment_name, namespace)
-        configmap_entities = find_entity_name(resources, "ConfigMap", configmap_name, namespace)
-        for deployment_entity in deployment_entities:
-            for configmap_entity in configmap_entities:
-                if configmap_name:  # Überprüfen, ob ConfigMap-Name tatsächlich existiert
-                    mermaid_output += f"{deployment_entity} ||--o| {configmap_entity} : I\n"
-
-    # link between services and feployments based on Labels
-    for service_name, selector, namespace, kind in service_links:
-        service_entities = find_entity_name(resources, "Service", service_name, namespace)
-        for key, elements in resources.items():
-            resource_kind, _ = key.split("_")
-            if resource_kind == "Deployment":
-                for i, (name, _, ns, labels, _, _, _) in enumerate(elements, start=1):
-                    if ns == namespace and match_selector_labels(selector, labels):
-                        deployment_entity = f"{resource_kind}_{i}"
-                        for service_entity in service_entities:
-                            mermaid_output += f"{service_entity} ||--o| {deployment_entity} : I\n"
+    for rel in relationships:
+        source_key = f"{rel['source_kind']}_{rel['namespace']}_{rel['source_name']}"
+        source_entity = entity_mapping.get(source_key)
+        if not source_entity:
+            continue
+        if 'target_name' in rel and 'target_kind' in rel:
+            target_key = f"{rel['target_kind']}_{rel['namespace']}_{rel['target_name']}"
+            target_entity = entity_mapping.get(target_key)
+            if not target_entity:
+                continue
+            mermaid_output += f"{source_entity} --> {target_entity} : {rel['relation']}\n"
+        elif 'target_selector' in rel:
+            for key, res in resources.items():
+                if res['namespace'] == rel['namespace'] and all(item in res['labels'].items() for item in rel['target_selector'].items()):
+                    target_entity = entity_mapping[key]
+                    mermaid_output += f"{source_entity} --> {target_entity} : {rel['relation']}\n"
 
     return mermaid_output
 
 # Beispielaufruf
-yaml_file = './template.yaml'  # Hier den Pfad zu Ihrer YAML-Datei angeben
-mermaid_diagram = generate_mermaid_erdiagram_from_yaml(yaml_file)
+yaml_file = './extended_k8s.yaml'
+mermaid_diagram = generate_mermaid_classdiagram_from_yaml(yaml_file)
 if mermaid_diagram:
     print(mermaid_diagram)
+    with open('output_class.mmd', 'w') as f:
+        f.write(mermaid_diagram)
 else:
     print("No output generated.")
-
-# Mermaid-Diagramm in eine Datei schreiben
-with open('output_er.mmd', 'w') as f:
-    f.write(mermaid_diagram)
