@@ -1,54 +1,142 @@
-# Kubernetes YAML to Mermaid ER Diagram Script
+# Kubernetes to Mermaid Diagram Generator
 
-This script parses Kubernetes YAML files to generate Entity-Relationship (ER) diagrams in Mermaid format. It focuses on visualizing relationships between various Kubernetes resources, such as `Deployments`, `Services`, `ServiceAccounts`, and `ConfigMaps`.
+This script parses Kubernetes YAML files and generates a Mermaid class diagram that visualizes the resources and their relationships within a Kubernetes cluster.
 
 ## Features
 
-- **ServiceAccount Links**: Links `Deployments` and `Pods` to their associated `ServiceAccounts`.
-- **ConfigMap Links**: Links `Deployments` to `ConfigMaps` if they are referenced in volumes.
-- **Service Links**: Links `Services` to `Deployments` based on matching labels in `selector`.
+- **Supports multiple resource types**:
+  - Processes various Kubernetes resources such as Deployments, StatefulSets, DaemonSets, Services, Ingresses, ConfigMaps, Secrets, PersistentVolumeClaims, NetworkPolicies, and HorizontalPodAutoscalers.
 
-## How It Works
+- **Relationship Mapping**:
+  - Identifies and represents relationships between resources, including:
+    - **Uses**: Indicates when a resource uses another resource (e.g., a Deployment uses a ConfigMap).
+    - **Mounts**: Shows when a resource mounts a volume (e.g., a StatefulSet mounts a PersistentVolumeClaim).
+    - **Targets**: Represents Services targeting workloads based on selectors.
+    - **Controls**: Shows HorizontalPodAutoscalers controlling Deployments or StatefulSets.
+    - **Applies To**: Displays NetworkPolicies applied to specific workloads.
 
-The script reads a YAML file and identifies various Kubernetes resources, creating links between them based on their configurations. The output is a Mermaid ER diagram that visually represents these relationships.
+- **Optimized and Compact**:
+  - The script is optimized to be concise without losing functionality.
 
-## Usage
+- **Customizable Output**:
+  - Generates Mermaid class diagrams that can be easily visualized with tools like the [Mermaid Live Editor](https://mermaid.live/).
 
-1. Place your Kubernetes YAML file in the same directory as the script.
-2. Update the `yaml_file` variable in the script with the path to your YAML file.
-3. Run the script to generate the Mermaid ER diagram.
-4. The diagram will be saved as a `.mmd` file, which you can view using any Mermaid-compatible editor.
+## Prerequisites
 
-## Example
+- **Python 3.x**
+- **PyYAML Library**
 
-Below is an example of the generated Mermaid diagram:
+  Install PyYAML using:
+
+  pip install pyyaml
+
 
 ```mermaid
-%%{init: {'theme':'forest'}}%%
-erDiagram
-ServiceAccount_1 {
-  string kind "ServiceAccount"
-  string name "release-name-karma"
-  string api_version "v1"
-  string namespace "default"
+classDiagram
+class Namespace_production_production {
+  +kind: Namespace
+  +api_version: v1
+  +name: production
+  +namespace: production
 }
-Service_1 {
-  string kind "Service"
-  string name "release-name-karma"
-  string api_version "v1"
-  string namespace "default"
-  string networking "Port: 80, Protocol: TCP"
+class ServiceAccount_production_app_serviceaccount {
+  +kind: ServiceAccount
+  +api_version: v1
+  +name: app-serviceaccount
+  +namespace: production
 }
-Deployment_1 {
-  string kind "Deployment"
-  string name "release-name-karma"
-  string api_version "apps/v1"
-  string namespace "default"
-  string serviceAccountName "release-name-karma"
-  string image "ghcr.io/prymitive/karma:v0.120"
+class ConfigMap_production_app_config {
+  +kind: ConfigMap
+  +api_version: v1
+  +name: app-config
+  +namespace: production
 }
-Deployment_1 ||--o| ServiceAccount_1 : I
-Service_1 ||--o| Deployment_1 : I
+class Secret_production_db_secret {
+  +kind: Secret
+  +api_version: v1
+  +name: db-secret
+  +namespace: production
+}
+class PersistentVolumeClaim_production_db_pvc {
+  +kind: PersistentVolumeClaim
+  +api_version: v1
+  +name: db-pvc
+  +namespace: production
+}
+class Deployment_production_web_deployment {
+  +kind: Deployment
+  +api_version: apps/v1
+  +name: web-deployment
+  +namespace: production
+  +service_account_name: app-serviceaccount
+  +image: nginx:1.19
+}
+class StatefulSet_production_db_statefulset {
+  +kind: StatefulSet
+  +api_version: apps/v1
+  +name: db-statefulset
+  +namespace: production
+  +service_account_name: app-serviceaccount
+  +image: postgres:12
+}
+class DaemonSet_production_log_daemonset {
+  +kind: DaemonSet
+  +api_version: apps/v1
+  +name: log-daemonset
+  +namespace: production
+  +service_account_name: app-serviceaccount
+  +image: fluentd:latest
+}
+class Service_production_web_service {
+  +kind: Service
+  +api_version: v1
+  +name: web-service
+  +namespace: production
+  +ports: [(80, 'TCP')]
+}
+class Service_production_db_service {
+  +kind: Service
+  +api_version: v1
+  +name: db-service
+  +namespace: production
+  +ports: [(5432, 'TCP')]
+}
+class Ingress_production_web_ingress {
+  +kind: Ingress
+  +api_version: networking.k8s.io/v1
+  +name: web-ingress
+  +namespace: production
+}
+class IngressClass_default_nginx {
+  +kind: IngressClass
+  +api_version: networking.k8s.io/v1
+  +name: nginx
+  +namespace: default
+}
+class NetworkPolicy_production_allow_web {
+  +kind: NetworkPolicy
+  +api_version: networking.k8s.io/v1
+  +name: allow-web
+  +namespace: production
+}
+class HorizontalPodAutoscaler_production_web_hpa {
+  +kind: HorizontalPodAutoscaler
+  +api_version: autoscaling/v2
+  +name: web-hpa
+  +namespace: production
+}
+Deployment_production_web_deployment --> ServiceAccount_production_app_serviceaccount : uses_serviceaccount
+Deployment_production_web_deployment --> ConfigMap_production_app_config : uses_configmap
+Deployment_production_web_deployment --> ConfigMap_production_app_config : mounts_configmap
+StatefulSet_production_db_statefulset --> ServiceAccount_production_app_serviceaccount : uses_serviceaccount
+StatefulSet_production_db_statefulset --> Secret_production_db_secret : uses_secret
+StatefulSet_production_db_statefulset --> PersistentVolumeClaim_production_db_pvc : mounts_persistentvolumeclaim
+DaemonSet_production_log_daemonset --> ServiceAccount_production_app_serviceaccount : uses_serviceaccount
+Service_production_web_service --> Deployment_production_web_deployment : targets
+Service_production_db_service --> StatefulSet_production_db_statefulset : targets
+Ingress_production_web_ingress --> Service_production_web_service : routes_to
+NetworkPolicy_production_allow_web --> Deployment_production_web_deployment : applies_to
+HorizontalPodAutoscaler_production_web_hpa --> Deployment_production_web_deployment : controls
 ```
 
 ## Gitlab Call
