@@ -167,11 +167,12 @@ def generate_mermaid_classdiagram_from_yaml(yaml_file):
     return mermaid_output
 
 # Beispielaufruf
-yaml_file = './extended_k8s.yaml'
-mermaid_diagram = generate_mermaid_classdiagram_from_yaml(yaml_file)
-if mermaid_diagram:
-    print(mermaid_diagram)
-    with open('output_class.mmd', 'w') as f:
-        f.write(mermaid_diagram)
-else:
-    print("No output generated.")
+if __name__ == "__main__":
+    yaml_file = './extended_k8s.yaml'
+    mermaid_diagram = generate_mermaid_classdiagram_from_yaml(yaml_file)
+    if mermaid_diagram:
+        print(mermaid_diagram)
+        with open('output_class.mmd', 'w') as f:
+            f.write(mermaid_diagram)
+    else:
+        print("No output generated.")
