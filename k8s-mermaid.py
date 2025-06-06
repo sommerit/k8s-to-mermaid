@@ -164,7 +164,7 @@ def generate_mermaid_classdiagram_from_yaml(yaml_file):
         res = resources[key]
         entity_name = entity_mapping[key]
         attributes = [f"+{k}: {v}" for k, v in res.items() if v and k not in ['labels', 'annotations']]
-        mermaid_output += f"class {entity_name} {{\n  " + "\n  ".join(attributes) + "\n}}\n"
+        mermaid_output += f"class {entity_name} {{\n  " + "\n  ".join(attributes) + "\n}\n"
         mermaid_output += f"class {entity_name}:::{res['kind']}\n"
 
     for rel in sorted(relationships, key=lambda r: (r['source_kind'], r['source_name'], r.get('target_kind', ''), r.get('target_name', ''))):
