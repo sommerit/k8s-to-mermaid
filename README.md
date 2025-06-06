@@ -139,6 +139,30 @@ NetworkPolicy_production_allow_web --> Deployment_production_web_deployment : ap
 HorizontalPodAutoscaler_production_web_hpa --> Deployment_production_web_deployment : controls
 ```
 
+### Colored Diagram Example
+
+The diagram generator now assigns distinct colors to each Kubernetes kind using `classDef` statements. Below is a minimal sample showing the styling in action:
+
+```mermaid
+classDiagram
+classDef Deployment fill:#B4D5FF,stroke:#333,stroke-width:1px;
+classDef Service fill:#CFFFBF,stroke:#333,stroke-width:1px;
+
+class Deployment_default_my_dep {
+  +kind: Deployment
+  +name: my-dep
+}
+class Service_default_my_svc {
+  +kind: Service
+  +name: my-svc
+}
+
+class Deployment_default_my_dep:::Deployment
+class Service_default_my_svc:::Service
+
+Service_default_my_svc --> Deployment_default_my_dep : targets
+```
+
 ## Gitlab Call
 
 ```bash
