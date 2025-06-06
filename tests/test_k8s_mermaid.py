@@ -69,5 +69,8 @@ def test_generate_mermaid_classdiagram_from_yaml_contains_relationship():
         assert "Deployment_default_my_dep" in diagram
         # Relationship arrow from service to deployment
         assert "Service_default_my_svc --> Deployment_default_my_dep : targets" in diagram
+        # Colored class definitions should exist
+        assert "classDef Deployment" in diagram
+        assert "class Deployment_default_my_dep:::Deployment" in diagram
     finally:
         os.remove(path)

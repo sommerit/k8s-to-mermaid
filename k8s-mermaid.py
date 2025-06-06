@@ -142,12 +142,32 @@ def generate_mermaid_classdiagram_from_yaml(yaml_file):
 
     entity_mapping = {k: k.replace('-', '_').replace('.', '_') for k in resources}
 
-    for key, res in resources.items():
+    kind_colors = {
+        'Deployment': '#B4D5FF',
+        'StatefulSet': '#FFD680',
+        'DaemonSet': '#F8B4FF',
+        'Service': '#CFFFBF',
+        'Ingress': '#FFC0CB',
+        'ConfigMap': '#FFFACD',
+        'Secret': '#FFDEAD',
+        'PersistentVolumeClaim': '#E0FFFF',
+        'NetworkPolicy': '#D0D0D0',
+        'HorizontalPodAutoscaler': '#C0C0FF',
+    }
+
+    kinds = {res['kind'] for res in resources.values()}
+    for kind in sorted(kinds):
+        color = kind_colors.get(kind, '#E0E0E0')
+        mermaid_output += f"classDef {kind} fill:{color},stroke:#333,stroke-width:1px;\n"
+
+    for key in sorted(resources):
+        res = resources[key]
         entity_name = entity_mapping[key]
         attributes = [f"+{k}: {v}" for k, v in res.items() if v and k not in ['labels', 'annotations']]
         mermaid_output += f"class {entity_name} {{\n  " + "\n  ".join(attributes) + "\n}}\n"
+        mermaid_output += f"class {entity_name}:::{res['kind']}\n"
 
-    for rel in relationships:
+    for rel in sorted(relationships, key=lambda r: (r['source_kind'], r['source_name'], r.get('target_kind', ''), r.get('target_name', ''))):
         source_key = f"{rel['source_kind']}_{rel['namespace']}_{rel['source_name']}"
         source_entity = entity_mapping.get(source_key)
         if not source_entity:
