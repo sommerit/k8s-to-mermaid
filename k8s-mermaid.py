@@ -21,6 +21,7 @@ def parse_kubernetes_resources(yaml_file):
                     'api_version': api_version,
                     'name': name,
                     'namespace': namespace,
+                    'labels': labels,
                     'service_account_name': None,
                     'image': None,
                     'ports': [],
