@@ -53,9 +53,9 @@ def test_parse_kubernetes_resources_labels_and_relationships():
         dep_key = "Deployment_default_my-dep"
         assert dep_key in resources
         assert resources[dep_key]["labels"] == {"app": "myapp"}
-        # Service should create a targets relationship to deployment
+        # Service should create an exposes relationship to deployment
         assert any(
-            r["relation"] == "targets" and r["source_kind"] == "Service" and r["target_selector"] == {"app": "myapp"}
+            r["relation"].startswith("exposes_") and r["source_kind"] == "Service" and r["target_selector"] == {"app": "myapp"}
             for r in relationships
         )
     finally:
@@ -68,6 +68,6 @@ def test_generate_mermaid_classdiagram_from_yaml_contains_relationship():
         assert "Service_default_my_svc" in diagram
         assert "Deployment_default_my_dep" in diagram
         # Relationship arrow from service to deployment
-        assert "Service_default_my_svc --> Deployment_default_my_dep : targets" in diagram
+        assert "Service_default_my_svc --> Deployment_default_my_dep : exposes_tcp_80" in diagram
     finally:
         os.remove(path)
